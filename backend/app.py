@@ -40,10 +40,19 @@ class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
 
+class SourceInfo(BaseModel):
+    """Detailed source information for citations"""
+    course_title: str
+    course_link: Optional[str] = None
+    instructor: Optional[str] = None
+    lesson_number: Optional[int] = None
+    lesson_title: Optional[str] = None
+    lesson_link: Optional[str] = None
+
 class QueryResponse(BaseModel):
     """Response model for course queries"""
     answer: str
-    sources: List[str]
+    sources: List[SourceInfo]
     session_id: str
 
 class CourseStats(BaseModel):
@@ -61,10 +70,23 @@ async def query_documents(request: QueryRequest):
         session_id = request.session_id
         if not session_id:
             session_id = rag_system.session_manager.create_session()
-        
+
         # Process query using RAG system
-        answer, sources = rag_system.query(request.query, session_id)
-        
+        answer, raw_sources = rag_system.query(request.query, session_id)
+
+        # Convert raw source dicts to SourceInfo objects
+        sources = [
+            SourceInfo(
+                course_title=src.get("course_title", "Unknown"),
+                course_link=src.get("course_link"),
+                instructor=src.get("instructor"),
+                lesson_number=src.get("lesson_number"),
+                lesson_title=src.get("lesson_title"),
+                lesson_link=src.get("lesson_link")
+            ) if isinstance(src, dict) else SourceInfo(course_title=str(src))
+            for src in raw_sources
+        ]
+
         return QueryResponse(
             answer=answer,
             sources=sources,

@@ -88,30 +88,80 @@ class CourseSearchTool(Tool):
     def _format_results(self, results: SearchResults) -> str:
         """Format search results with course and lesson context"""
         formatted = []
-        sources = []  # Track sources for the UI
-        
+        sources = []  # Track sources for the UI as rich dicts
+        seen_sources = set()  # Track unique (course_title, lesson_number) pairs
+
+        # Cache for course metadata to avoid repeated lookups
+        course_metadata_cache = {}
+
         for doc, meta in zip(results.documents, results.metadata):
             course_title = meta.get('course_title', 'unknown')
             lesson_num = meta.get('lesson_number')
-            
+
             # Build context header
             header = f"[{course_title}"
             if lesson_num is not None:
                 header += f" - Lesson {lesson_num}"
             header += "]"
-            
-            # Track source for the UI
-            source = course_title
-            if lesson_num is not None:
-                source += f" - Lesson {lesson_num}"
-            sources.append(source)
-            
+
+            # Build rich source dict - deduplicate by (course_title, lesson_number)
+            source_key = (course_title, lesson_num)
+            if source_key not in seen_sources:
+                seen_sources.add(source_key)
+
+                # Get course metadata (with caching)
+                if course_title not in course_metadata_cache:
+                    course_metadata_cache[course_title] = self._get_course_metadata(course_title)
+
+                course_meta = course_metadata_cache[course_title]
+
+                source_info = {
+                    "course_title": course_title,
+                    "course_link": course_meta.get("course_link") if course_meta else None,
+                    "instructor": course_meta.get("instructor") if course_meta else None,
+                    "lesson_number": lesson_num,
+                    "lesson_title": None,
+                    "lesson_link": None
+                }
+
+                # Get lesson-specific info if we have a lesson number
+                if lesson_num is not None and course_meta:
+                    lesson_info = self._get_lesson_info(course_meta, lesson_num)
+                    if lesson_info:
+                        source_info["lesson_title"] = lesson_info.get("lesson_title")
+                        source_info["lesson_link"] = lesson_info.get("lesson_link")
+
+                sources.append(source_info)
+
             formatted.append(f"{header}\n{doc}")
-        
+
         # Store sources for retrieval
         self.last_sources = sources
-        
+
         return "\n\n".join(formatted)
+
+    def _get_course_metadata(self, course_title: str) -> dict:
+        """Get course metadata from the vector store catalog"""
+        import json
+        try:
+            results = self.store.course_catalog.get(ids=[course_title])
+            if results and 'metadatas' in results and results['metadatas']:
+                metadata = results['metadatas'][0]
+                # Parse lessons JSON if present
+                if 'lessons_json' in metadata:
+                    metadata['lessons'] = json.loads(metadata['lessons_json'])
+                return metadata
+        except Exception as e:
+            print(f"Error getting course metadata: {e}")
+        return {}
+
+    def _get_lesson_info(self, course_meta: dict, lesson_number: int) -> dict:
+        """Extract lesson info from course metadata"""
+        lessons = course_meta.get('lessons', [])
+        for lesson in lessons:
+            if lesson.get('lesson_number') == lesson_number:
+                return lesson
+        return {}
 
 class ToolManager:
     """Manages available tools for the AI"""

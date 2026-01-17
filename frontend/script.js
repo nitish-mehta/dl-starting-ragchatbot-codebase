@@ -124,8 +124,8 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     if (sources && sources.length > 0) {
         html += `
             <details class="sources-collapsible">
-                <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <summary class="sources-header">Sources (${sources.length})</summary>
+                <div class="sources-content">${renderSourceCards(sources)}</div>
             </details>
         `;
     }
@@ -142,6 +142,52 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Render rich source cards from SourceInfo objects
+function renderSourceCards(sources) {
+    return sources.map((source, index) => {
+        const number = index + 1;
+
+        // Build course title/link
+        let courseHtml;
+        if (source.course_link) {
+            courseHtml = `<a href="${escapeHtml(source.course_link)}" target="_blank" rel="noopener noreferrer" class="source-link">${escapeHtml(source.course_title)}</a>`;
+        } else {
+            courseHtml = `<span class="source-title">${escapeHtml(source.course_title)}</span>`;
+        }
+
+        // Build lesson info if available
+        let lessonHtml = '';
+        if (source.lesson_number !== null && source.lesson_number !== undefined) {
+            const lessonText = source.lesson_title
+                ? `Lesson ${source.lesson_number}: ${source.lesson_title}`
+                : `Lesson ${source.lesson_number}`;
+
+            if (source.lesson_link) {
+                lessonHtml = `<div class="source-lesson"><a href="${escapeHtml(source.lesson_link)}" target="_blank" rel="noopener noreferrer" class="lesson-link">${escapeHtml(lessonText)}</a></div>`;
+            } else {
+                lessonHtml = `<div class="source-lesson">${escapeHtml(lessonText)}</div>`;
+            }
+        }
+
+        // Build instructor info if available
+        let instructorHtml = '';
+        if (source.instructor) {
+            instructorHtml = `<div class="source-instructor">Instructor: ${escapeHtml(source.instructor)}</div>`;
+        }
+
+        return `
+            <div class="source-card">
+                <div class="source-number">${number}</div>
+                <div class="source-details">
+                    <div class="source-course">${courseHtml}</div>
+                    ${lessonHtml}
+                    ${instructorHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 // Removed removeMessage function - no longer needed since we handle loading differently
